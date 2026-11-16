@@ -1,3 +1,4 @@
+// load environment vars from .env
 import 'dotenv/config'
 import express from 'express'
 import neo4j from 'neo4j-driver'
@@ -5,9 +6,16 @@ import process from 'node:process'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
-const recognizedLabels = ['Course', 'Topic', 'Tool']
+
+// expected node types to show labels
+const recognizedLabels = ['Course', 'Topic', 'Tool'] 
+
+// cypher query to get all courses and their relationships
 const graphQuery = 'MATCH (c:Course) - [r] -> (target) RETURN c, r, target'
 
+/**
+ * makes a neo4j node record into a object for ForceGraph2D.
+ */
 function createNode(node) {
   const properties = node.properties
   const type = node.labels.find((label) => recognizedLabels.includes(label)) || node.labels[0]
@@ -20,12 +28,17 @@ function createNode(node) {
   }
 }
 
+/**
+ * GET /api/graph
+ * Queries Neo4j for the entire graph and returns nodes and links
+ */
 app.get('/api/graph', async (_request, response) => {
   let session
   let graph
 
   try {
 
+    // open a database session
     session = driver.session(
       process.env.NEO4J_DATABASE
         ? { database: process.env.NEO4J_DATABASE }
@@ -33,6 +46,8 @@ app.get('/api/graph', async (_request, response) => {
     )
     
     const result = await session.run(graphQuery)
+
+    // use a map keyed by node IDs to prevent dups when multiple courses share a tool / topic.
     const nodesById = new Map()
 
     const links = result.records.map((record) => {
@@ -45,6 +60,7 @@ app.get('/api/graph', async (_request, response) => {
       nodesById.set(sourceNode.id, sourceNode)
       nodesById.set(targetNode.id, targetNode)
 
+      // return format used in ForceGraph2D
       return {
         source: relationship.startNodeElementId || course.elementId,
         target: relationship.endNodeElementId || target.elementId,
@@ -61,6 +77,7 @@ app.get('/api/graph', async (_request, response) => {
 
   } finally {
 
+    // closes the session to prevent memory leaks in Neo4j
     if (session) {
       try {
         await session.close()
@@ -73,16 +90,21 @@ app.get('/api/graph', async (_request, response) => {
   return response.json(graph)
 })
 
+// fail on startup if the needed vars for Neo4j are missing
 if (!process.env.NEO4J_URI || !process.env.NEO4J_USERNAME || !process.env.NEO4J_PASSWORD) {
   console.error('Set NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD before starting the API.')
   process.exit(1)
 }
 
+// init the Neo4j driver instance
 const driver = neo4j.driver(
   process.env.NEO4J_URI,
   neo4j.auth.basic(process.env.NEO4J_USERNAME, process.env.NEO4J_PASSWORD),
 )
 
+/**
+ * Makes sure the app is connected to Neo4j before starting Express
+ */
 async function startServer() {
   try {
     await driver.verifyConnectivity()
@@ -99,12 +121,16 @@ async function startServer() {
   }
 }
 
+/**
+ * Closes the Neo4j driver connection when the server is shut down.
+ */
 async function shutdown() {
   await driver.close()
   process.exit(0)
 }
 
-process.once('SIGINT', shutdown)
-process.once('SIGTERM', shutdown)
+process.once('SIGINT', shutdown) // signal interrupt
+process.once('SIGTERM', shutdown) // signal terminate
 
+// start the server
 startServer()

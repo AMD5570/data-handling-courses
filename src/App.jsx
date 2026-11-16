@@ -3,29 +3,38 @@ import ForceGraph2D from 'react-force-graph-2d'
 import RITLogo from './assets/rit-logo.png'
 import './App.css'
 
+// Colors used for the nodes in the graph
 const TYPE_COLORS = {
   Course: '#F76902',
   Topic: '#0288D1',
   Tool: '#388E3C',
 }
 
+/**
+ * Returns the display label for a node.
+ */
 function getNodeName(node) {
   return node.name || node.code || 'Unnamed node'
 }
 
+/**
+ * Gets the string id from a link endpoint.
+ */
 function getEndpointId(endpoint) {
   return typeof endpoint === 'object' ? endpoint.id : endpoint
 }
 
 function App() {
+  // core app states
   const [graphData, setGraphData] = useState({ nodes: [], links: [] })
   const [selectedNodeId, setSelectedNodeId] = useState(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // fetch the entire graph once when the app starts
   useEffect(() => {
-    let active = true
+    let active = true // prevents state updates if the component unmounts mid request
 
     async function loadGraph() {
       try {
@@ -57,6 +66,7 @@ function App() {
     }
   }, [])
 
+  // lookup map for getting node objects by an id
   const nodesById = useMemo(
     () => new Map(graphData.nodes.map((node) => [node.id, node])),
     [graphData.nodes],
@@ -64,6 +74,7 @@ function App() {
 
   const selectedNode = nodesById.get(selectedNodeId)
 
+  // finds all direct neighbors of the current node for the sidebar list
   const connectedNodes = useMemo(() => {
     if (!selectedNodeId) return []
 
@@ -83,6 +94,7 @@ function App() {
 
   }, [graphData.links, nodesById, selectedNodeId])
 
+  // filters and sorts nodes based on the sidebar search input
   const filteredNodes = useMemo(() => {
 
     const query = search.trim().toLowerCase()
@@ -97,6 +109,7 @@ function App() {
 
   }, [graphData.nodes, search])
 
+  // Set of nodes that should remain highlighted (when selected + neighbors)
   const highlightedNodeIds = useMemo(() => {
     if (!selectedNodeId) return null
 
@@ -113,22 +126,35 @@ function App() {
 
   }, [graphData.links, selectedNodeId])
 
+  /**
+   * Renderer for individual graph nodes and their text labels.
+   * Dims unrelated nodes when a selection is active and scales text relative to the zoom amount.
+   */
   function renderNode(node, context, globalScale) {
     const highlighted = !highlightedNodeIds || highlightedNodeIds.has(node.id)
     const color = TYPE_COLORS[node.type] || '#64748B'
     const radius = node.type === 'Course' ? 7 : 5
+    // display node course codes 
     const label = node.type === 'Course' && node.code ? node.code : getNodeName(node)
 
     context.save()
+
+    // dim unselected nodes
     context.globalAlpha = highlighted ? 1 : 0.15
+
+    // draw node circle
     context.beginPath()
     context.arc(node.x, node.y, radius, 0, 2 * Math.PI)
     context.fillStyle = color
     context.fill()
+
+    // draw a light white border
     context.lineWidth = 1.5 / globalScale
     context.strokeStyle = '#FFFFFF'
     context.stroke()
-    context.font = `${12 / globalScale}px Inter, system-ui, sans-serif`
+
+    // draw text label beneath the node circle
+    context.font = `${12 / globalScale}px "Figtree", sans-serif`;
     context.textAlign = 'center'
     context.textBaseline = 'top'
     context.fillStyle = '#263445'
@@ -136,6 +162,7 @@ function App() {
     context.restore()
   }
 
+  // helper to make sure an edge is attached to a selected node
   const selectedLink = (link) =>
     !selectedNodeId ||
     getEndpointId(link.source) === selectedNodeId ||
@@ -143,6 +170,8 @@ function App() {
 
   return (
     <main className="app-shell">
+
+    {/* Left Sidebar: Search, Node Inspector, and Node Legend */}
       <aside className="sidebar">
         <header className="sidebar-header">
           <div className="rit-logo">
@@ -154,6 +183,7 @@ function App() {
           </div>
         </header>
 
+        {/* Search input and list of matching nodes */}
         <section className="search-section" aria-label="Search graph nodes">
           <label htmlFor="node-search">Find a course, topic, or tool</label>
 
@@ -197,6 +227,7 @@ function App() {
           </ul>
         </section>
 
+        {/* Details showing metadata and clickable neighbors for a selected node */}
         <section className="details-section" aria-live="polite">
 
           {selectedNode ? (
@@ -258,6 +289,7 @@ function App() {
 
         </section>
 
+        {/* Node Legend */}
         <footer className="legend">
           <p className="eyebrow">Node types</p>
           
@@ -272,7 +304,8 @@ function App() {
         </footer>
 
       </aside>
-
+      
+      {/* Right Panel: Interactive ForceGraph2D graph */}
       <section className="graph-panel" aria-label="Course relationship graph">
 
         <div className="graph-toolbar">
@@ -282,6 +315,7 @@ function App() {
           </div>
         </div>
 
+        {/* Status overlays for loading, errors, or empty results */}
         {loading && <div className="graph-message">Loading courses, tools, and topics...</div>}
 
         {!loading && error && (
@@ -295,6 +329,7 @@ function App() {
           <div className="graph-message">No course relationships were found.</div>
         )}
 
+        {/* The main graph showing nodes and their neighbors. Allows for dragging/moving nodes. */}
         <ForceGraph2D
           graphData={graphData}
           backgroundColor="#F4F7FA"
