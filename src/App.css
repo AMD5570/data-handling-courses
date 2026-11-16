@@ -420,6 +420,23 @@
   color: #8a3028;
 }
 
+.switchDimensionButton {
+  z-index: 100;
+  pointer-events: auto;
+  cursor: pointer;
+  width: 12em;
+  height: 3em;
+  border-radius: 20px;
+  color: white;
+  background-color: #f76900;
+  border: none;
+  font-weight: bold;
+}
+
+.switchDimensionButton:hover {
+  background-color: #f57d22;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     flex-direction: column;

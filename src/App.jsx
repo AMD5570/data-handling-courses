@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
+import ForceGraph3D from 'react-force-graph-3d'
+import SpriteText from 'three-spritetext'
 import RITLogo from './assets/rit-logo.png'
 import './App.css'
 
@@ -31,6 +33,7 @@ function App() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [is3D, setIs3D] = useState(false)
 
   // fetch the entire graph once when the app starts
   useEffect(() => {
@@ -160,6 +163,18 @@ function App() {
     context.fillStyle = '#263445'
     context.fillText(label, node.x, node.y + radius + 3 / globalScale)
     context.restore()
+  }
+
+  function render3DNode(node) {
+    const highlighted = !highlightedNodeIds || highlightedNodeIds.has(node.id)
+    const label = node.type === 'Course' && node.code ? node.code : getNodeName(node);
+
+    const sprite = new SpriteText(label)
+    sprite.color = TYPE_COLORS[node.type] || '#64748B'
+    sprite.textHeight = node.type === 'Course' ? 6 : 4
+    sprite.material.opacity = highlighted ? 1 : 0.15
+    sprite.material.transparent = true
+    return sprite
   }
 
   // helper to make sure an edge is attached to a selected node
@@ -313,6 +328,9 @@ function App() {
             <p className="eyebrow">Neo4j</p>
             <h2>Interactive Graph</h2>
           </div>
+          <button className="switchDimensionButton" onClick={() => setIs3D((prev) => !prev)}>
+            {is3D ? 'Switch to 2D' : 'Switch to 3D'}
+          </button>
         </div>
 
         {/* Status overlays for loading, errors, or empty results */}
@@ -330,27 +348,57 @@ function App() {
         )}
 
         {/* The main graph showing nodes and their neighbors. Allows for dragging/moving nodes. */}
-        <ForceGraph2D
-          graphData={graphData}
-          backgroundColor="#F4F7FA"
-          nodeId="id"
-          nodeLabel={(node) => `${getNodeName(node)} (${node.type})`}
-          nodeCanvasObject={renderNode}
-          nodeCanvasObjectMode={() => 'replace'}
-          linkColor={(link) => selectedLink(link) ? '#91A2B5' : 'rgba(145, 162, 181, 0.12)'}
-          linkWidth={(link) => selectedLink(link) ? 1.4 : 0.7}
-          linkDirectionalArrowLength={5}
-          linkDirectionalArrowRelPos={0.97}
-          linkDirectionalArrowColor={(link) =>
-            selectedLink(link) ? '#91A2B5' : 'rgba(145, 162, 181, 0.12)'
-          }
-          onNodeClick={(node) => setSelectedNodeId(node.id)}
-          onBackgroundClick={() => setSelectedNodeId(null)}
-          enableNodeDrag
-          cooldownTicks={90}
-          minZoom={1}
-          maxZoom={30}
-        />
+
+        {is3D ? (
+          <ForceGraph3D
+            graphData={graphData}
+            backgroundColor="#F4F7FA"
+            nodeId="id"
+            nodeLabel={(node) => `${getNodeName(node)} (${node.type})`}
+            nodeThreeObject={render3DNode}
+            nodeThreeObjectExtend={true}
+            nodeColor={(node) => {
+              const color = TYPE_COLORS[node.type] || '#64748B'
+              const opacity = !highlightedNodeIds || highlightedNodeIds.has(node.id) ? 0.6 : 0.15
+              const red = Number.parseInt(color.slice(1, 3), 16)
+              const green = Number.parseInt(color.slice(3, 5), 16)
+              const blue = Number.parseInt(color.slice(5, 7), 16)
+              return `rgba(${red}, ${green}, ${blue}, ${opacity})`
+            }}
+            nodeOpacity={1}
+            linkColor={(link) => selectedLink(link) ? '#91A2B5' : 'rgba(145, 162, 181, 0.12)'}
+            linkWidth={(link) => selectedLink(link) ? 1.4 : 0.5}
+            linkDirectionalArrowLength={4}
+            linkDirectionalArrowRelPos={0.97}
+            onNodeClick={(node) => setSelectedNodeId(node.id)}
+            onBackgroundClick={() => setSelectedNodeId(null)}
+            cooldownTicks={90}
+            minZoom={10}
+            maxZoom={100}
+          />
+        ) : (
+          <ForceGraph2D
+            graphData={graphData}
+            backgroundColor="#F4F7FA"
+            nodeId="id"
+            nodeLabel={(node) => `${getNodeName(node)} (${node.type})`}
+            nodeCanvasObject={renderNode}
+            nodeCanvasObjectMode={() => 'replace'}
+            linkColor={(link) => selectedLink(link) ? '#91A2B5' : 'rgba(145, 162, 181, 0.12)'}
+            linkWidth={(link) => selectedLink(link) ? 1.4 : 0.7}
+            linkDirectionalArrowLength={5}
+            linkDirectionalArrowRelPos={0.97}
+            linkDirectionalArrowColor={(link) =>
+              selectedLink(link) ? '#91A2B5' : 'rgba(145, 162, 181, 0.12)'
+            }
+            onNodeClick={(node) => setSelectedNodeId(node.id)}
+            onBackgroundClick={() => setSelectedNodeId(null)}
+            enableNodeDrag
+            cooldownTicks={90}
+            minZoom={1}
+            maxZoom={30}
+          />
+        )}
       </section>
 
       <div className="graph-creds">
