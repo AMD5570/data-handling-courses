@@ -351,6 +351,11 @@
   overflow: hidden;
 }
 
+.graph-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .graph-panel > canvas {
   display: block;
 }
@@ -384,6 +389,11 @@
   font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.3px;
+}
+
+.graph-toolbar-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .graph-instructions {

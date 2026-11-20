@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
 import ForceGraph3D from 'react-force-graph-3d'
 import SpriteText from 'three-spritetext'
@@ -34,6 +34,8 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [is3D, setIs3D] = useState(false)
+  const graph2DRef = useRef()
+  const graph3DRef = useRef()
 
   // fetch the entire graph once when the app starts
   useEffect(() => {
@@ -68,6 +70,58 @@ function App() {
       active = false
     }
   }, [])
+
+  // Give the force-directed layout more room so labels remain readable.
+  useEffect(() => {
+    if (graphData.nodes.length === 0) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const graph = is3D ? graph3DRef.current : graph2DRef.current
+      if (!graph) return
+
+      graph.d3Force('charge')?.strength(is3D ? -420 : -500)
+
+      const linkForce = graph.d3Force('link')
+      linkForce?.distance(is3D ? 145 : 125).strength(0.5)
+
+      graph.d3Force('collision', (alpha) => {
+        const minimumDistance = is3D ? 38 : 58
+
+        for (let leftIndex = 0; leftIndex < graphData.nodes.length; leftIndex += 1) {
+          const left = graphData.nodes[leftIndex]
+
+          for (let rightIndex = leftIndex + 1; rightIndex < graphData.nodes.length; rightIndex += 1) {
+            const right = graphData.nodes[rightIndex]
+            const dx = (right.x || 0) - (left.x || 0)
+            const dy = (right.y || 0) - (left.y || 0)
+            const dz = is3D ? (right.z || 0) - (left.z || 0) : 0
+            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+            if (distance > 0 && distance < minimumDistance) {
+              const overlap = (minimumDistance - distance) * alpha * 0.5
+              const normalX = dx / distance
+              const normalY = dy / distance
+              const normalZ = dz / distance
+
+              left.vx -= normalX * overlap
+              left.vy -= normalY * overlap
+              right.vx += normalX * overlap
+              right.vy += normalY * overlap
+
+              if (is3D) {
+                left.vz -= normalZ * overlap
+                right.vz += normalZ * overlap
+              }
+            }
+          }
+        }
+      })
+
+      graph.d3ReheatSimulation?.()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [graphData, is3D])
 
   // lookup map for getting node objects by an id
   const nodesById = useMemo(
@@ -157,7 +211,7 @@ function App() {
     context.stroke()
 
     // draw text label beneath the node circle
-    context.font = `${12 / globalScale}px "Figtree", sans-serif`;
+    context.font = `${14 / globalScale}px "Figtree", sans-serif`;
     context.textAlign = 'center'
     context.textBaseline = 'top'
     context.fillStyle = '#263445'
@@ -171,7 +225,7 @@ function App() {
 
     const sprite = new SpriteText(label)
     sprite.color = TYPE_COLORS[node.type] || '#64748B'
-    sprite.textHeight = node.type === 'Course' ? 6 : 4
+    sprite.textHeight = node.type === 'Course' ? 7 : 5
     sprite.material.opacity = highlighted ? 1 : 0.15
     sprite.material.transparent = true
     return sprite
@@ -182,6 +236,40 @@ function App() {
     !selectedNodeId ||
     getEndpointId(link.source) === selectedNodeId ||
     getEndpointId(link.target) === selectedNodeId
+
+  function resetGraphView() {
+    const graph = is3D ? graph3DRef.current : graph2DRef.current
+    graph?.zoomToFit?.(400, 80)
+  }
+
+  function selectNode(nodeId) {
+    setSelectedNodeId(nodeId)
+
+    window.setTimeout(() => {
+      const node = nodesById.get(nodeId)
+      if (!node) return
+
+      if (is3D) {
+        const graph = graph3DRef.current
+        if (!graph) return
+
+        const x = node.x || 0
+        const y = node.y || 0
+        const z = node.z || 0
+        graph.cameraPosition(
+          { x: x + 180, y: y + 120, z: z + 180 },
+          { x, y, z },
+          700,
+        )
+      } else {
+        const graph = graph2DRef.current
+        if (!graph) return
+
+        graph.centerAt(node.x || 0, node.y || 0, 700)
+        graph.zoom(2.5)
+      }
+    }, 150)
+  }
 
   return (
     <main className="app-shell">
@@ -221,7 +309,7 @@ function App() {
                 <button
                   type="button"
                   className={`node-result${selectedNodeId === node.id ? ' is-selected' : ''}`}
-                  onClick={() => setSelectedNodeId(node.id)}
+                  onClick={() => selectNode(node.id)}
                 >
                   <span
                     className="type-dot"
@@ -275,7 +363,7 @@ function App() {
                   {connectedNodes.map((node) => (
 
                     <li key={node.id}>
-                      <button type="button" onClick={() => setSelectedNodeId(node.id)}>
+                      <button type="button" onClick={() => selectNode(node.id)}>
                         <span
                           className="type-dot"
                           style={{ backgroundColor: TYPE_COLORS[node.type] || '#64748B' }}
@@ -328,9 +416,14 @@ function App() {
             <p className="eyebrow">Neo4j</p>
             <h2>Interactive Graph</h2>
           </div>
-          <button className="switchDimensionButton" onClick={() => setIs3D((prev) => !prev)}>
-            {is3D ? 'Switch to 2D' : 'Switch to 3D'}
-          </button>
+          <div className="graph-toolbar-actions">
+            <button className="switchDimensionButton" type="button" onClick={resetGraphView}>
+              Center Graph
+            </button>
+            <button className="switchDimensionButton" type="button" onClick={() => setIs3D((prev) => !prev)}>
+              {is3D ? 'Switch to 2D' : 'Switch to 3D'}
+            </button>
+          </div>
         </div>
 
         {/* Status overlays for loading, errors, or empty results */}
@@ -351,6 +444,7 @@ function App() {
 
         {is3D ? (
           <ForceGraph3D
+            ref={graph3DRef}
             graphData={graphData}
             backgroundColor="#F4F7FA"
             nodeId="id"
@@ -370,14 +464,18 @@ function App() {
             linkWidth={(link) => selectedLink(link) ? 1.4 : 0.5}
             linkDirectionalArrowLength={4}
             linkDirectionalArrowRelPos={0.97}
-            onNodeClick={(node) => setSelectedNodeId(node.id)}
+            onNodeClick={(node) => selectNode(node.id)}
             onBackgroundClick={() => setSelectedNodeId(null)}
-            cooldownTicks={90}
+            cooldownTicks={180}
+            warmupTicks={100}
+            d3AlphaDecay={0.015}
+            d3VelocityDecay={0.3}
             minZoom={10}
             maxZoom={100}
           />
         ) : (
           <ForceGraph2D
+            ref={graph2DRef}
             graphData={graphData}
             backgroundColor="#F4F7FA"
             nodeId="id"
@@ -391,11 +489,14 @@ function App() {
             linkDirectionalArrowColor={(link) =>
               selectedLink(link) ? '#91A2B5' : 'rgba(145, 162, 181, 0.12)'
             }
-            onNodeClick={(node) => setSelectedNodeId(node.id)}
+            onNodeClick={(node) => selectNode(node.id)}
             onBackgroundClick={() => setSelectedNodeId(null)}
             enableNodeDrag
-            cooldownTicks={90}
-            minZoom={1}
+            cooldownTicks={180}
+            warmupTicks={100}
+            d3AlphaDecay={0.015}
+            d3VelocityDecay={0.3}
+            minZoom={0.2}
             maxZoom={30}
           />
         )}
